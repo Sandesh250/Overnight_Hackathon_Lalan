@@ -64,21 +64,17 @@ This saves:
 * Human effort ⏱
 * Equipment downtime ⚙
 * Operational losses 💸
-* Even lives 🚑
 
 ---
 
 ## 🏗 Tech Stack
 
-| Layer      | Technology           |
-| ---------- | -------------------- |
-| UI         | Streamlit            |
-| AI Models  | GPT / LangChain      |
-| Email      | Gmail API            |
-| Storage    | Google Drive + Local |
-| Search     | FAISS Vector DB      |
-| Scheduling | Google Calendar API  |
-| State      | Local JSON / SQLite  |
+| Layer           | Technology           |
+| ----------------| -------------------- |
+| UI              | Streamlit            |
+| AI Models       | Groq/LangChain       |         
+| Document parsing| pypdf                |
+| Emailing        | smtplib              |
 
 ## 🏆 Team
 
