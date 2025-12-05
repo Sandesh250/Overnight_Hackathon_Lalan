@@ -1,4 +1,3 @@
-# classify.py
 import os
 import json
 import smtplib
@@ -11,7 +10,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pathlib import Path
 from dotenv import load_dotenv
 
-# LangChain / Groq imports (assume installed)
+
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -24,9 +23,7 @@ load_dotenv()
 
 app = FastAPI(title="File Classifier + Email Router")
 
-# -------------------------
-# Root + favicon
-# -------------------------
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return "<h2>File Classifier API</h2><p>Use <a href='/docs'>/docs</a> to try the endpoints.</p>"
@@ -39,9 +36,7 @@ async def favicon():
         return FileResponse(FAV)
     return "", 204
 
-# -------------------------
-# Env / SMTP config
-# -------------------------
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
@@ -49,12 +44,10 @@ SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
 
-# initialize LLM client
+
 llm = ChatGroq(model="openai/gpt-oss-120b", groq_api_key=GROQ_API_KEY)
 
-# -------------------------
-# Departments & email map (predefined)
-# -------------------------
+
 DEPARTMENTS = [
     "Principal",
     "Finance",
@@ -81,9 +74,7 @@ DEPT_EMAIL_MAP = {
     "Library Department": "rishab090506@gmail.com",
 }
 
-# -------------------------
-# Text extraction utilities
-# -------------------------
+
 def extract_text_from_pdf(file_obj) -> str:
     reader = PdfReader(file_obj)
     parts = []
@@ -115,9 +106,8 @@ def extract_text_from_file(uploaded_file: UploadFile) -> str:
     else:
         raise HTTPException(status_code=400, detail="Unsupported file type. Use PDF, DOCX or TXT.")
 
-# -------------------------
-# Chunking (word-based)
-# -------------------------
+
+
 def chunk_text(text: str) -> List[str]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=200,
@@ -128,9 +118,8 @@ def chunk_text(text: str) -> List[str]:
     chunks = splitter.split_text(text)
     return [c.strip() for c in chunks if c and c.strip()]
 
-# -------------------------
-# Segregator prompt
-# -------------------------
+
+
 segregator_prompt = ChatPromptTemplate.from_template("""
 You are an expert extractor whose job is to split the GIVEN CHUNK into the portions that are
 explicitly or implicitly addressed to each of the following departments:
@@ -160,9 +149,7 @@ def segregate_chunk_to_dept_texts(chunk_text_input: str) -> Dict[str,str]:
             return {}
     return {}
 
-# -------------------------
-# Classifier prompt (LLM)
-# -------------------------
+
 classifier_prompt = ChatPromptTemplate.from_template("""
 You are an expert document classifier.
 
@@ -211,9 +198,7 @@ def classify_subchunk_with_groq(chunk_text_input: str) -> Dict[str,Any]:
             pass
     return {"chunk": chunk_text_input, "departments": []}
 
-# -------------------------
-# Keyword fallback (if LLM returns nothing)
-# -------------------------
+
 KEYWORD_DEPT_MAP = {
     "exam": ["Controller of Examination", "Dean Academics"],
     "result": ["Controller of Examination"],
@@ -242,9 +227,7 @@ def keyword_classify_list(text: str) -> List[str]:
                     found.add(d)
     return list(found)
 
-# -------------------------
-# Combine agent (creates message per department)
-# -------------------------
+
 combine_prompt = ChatPromptTemplate.from_template("""
 Produce STRICT JSON: {"department":"...", "subject":"...", "body":"...", "action_items":["..."]}
 
@@ -299,9 +282,7 @@ def combine_chunks_for_department(department: str, chunk_texts: List[str]) -> Di
         "message": joined
     }
 
-# -------------------------
-# SMTP helper (used here: automatic send to predefined emails)
-# -------------------------
+
 def send_email_via_smtp(to_email: str, subject: str, body: str) -> Dict[str,Any]:
     if not SMTP_SERVER or not SMTP_USER or not SMTP_PASS:
         return {"to": to_email, "status": "skipped", "error": "SMTP not configured (check SMTP_SERVER/SMTP_USER/SMTP_PASS)"}
@@ -317,20 +298,18 @@ def send_email_via_smtp(to_email: str, subject: str, body: str) -> Dict[str,Any]
     except Exception as e:
         return {"to": to_email, "status": "error", "error": str(e)}
 
-# -------------------------
-# POST /classify : process file, combine messages, auto-send to predefined emails
-# -------------------------
+
 @app.post("/classify")
 async def classify_document(file: UploadFile):
-    # 1) extract
+ 
     text = extract_text_from_file(file)
     if not text or not text.strip():
         raise HTTPException(status_code=400, detail="No readable text found in file.")
 
-    # 2) chunk
+
     chunks = chunk_text(text)
 
-    # 3) segregate each chunk using segregator (optional)
+  
     segregated_subchunks = []
     for c in chunks:
         dept_map = segregate_chunk_to_dept_texts(c)
@@ -341,13 +320,13 @@ async def classify_document(file: UploadFile):
         else:
             segregated_subchunks.append({"chunk": c.strip(), "dept_hint": None})
 
-    # 4) classify each subchunk; fallback to keyword or hint if empty
     results: List[Dict[str,Any]] = []
     for item in segregated_subchunks:
         sub = item["chunk"]
         resp = classify_subchunk_with_groq(sub)
         if not resp.get("departments"):
-            # try keywords in sub
+            
+            
             kw = keyword_classify_list(sub)
             if kw:
                 resp["departments"] = kw
@@ -360,7 +339,8 @@ async def classify_document(file: UploadFile):
         resp["_segregator_hint"] = item.get("dept_hint")
         results.append(resp)
 
-    # 5) aggregate by department
+    
+    
     dept_to_chunks: Dict[str, List[str]] = defaultdict(list)
     for r in results:
         chunk_val = r.get("chunk", "")
@@ -368,24 +348,26 @@ async def classify_document(file: UploadFile):
             if dept in DEPARTMENTS:
                 dept_to_chunks[dept].append(chunk_val)
 
-    # 6) If still empty, try keywords across whole document
+
     if not dept_to_chunks:
         whole_depts = keyword_classify_list(text)
         if whole_depts:
             for d in whole_depts:
                 dept_to_chunks[d].append(text)
         else:
-            # final fallback: route full text to Principal
+          
+          
             dept_to_chunks["Principal"].append(text)
 
-    # 7) combine per-department and ensure message exists
+
     combined_messages: List[Dict[str,Any]] = []
     for dept, texts in dept_to_chunks.items():
         combined = combine_chunks_for_department(dept, texts)
         combined["message"] = combined.get("body", "")
         combined_messages.append(combined)
 
-    # 8) Auto-send each combined message to the predefined department email (DEPT_EMAIL_MAP)
+  
+  
     emails_sent = []
     for msg in combined_messages:
         dept_name = msg.get("department")
@@ -408,7 +390,8 @@ async def classify_document(file: UploadFile):
             "error": send_result.get("error")
         })
 
-    # 9) return everything (UI will show combined_messages plus emails_sent)
+   
+   
     return {
         "filename": file.filename,
         "segregated_output": results,
